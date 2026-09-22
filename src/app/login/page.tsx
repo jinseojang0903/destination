@@ -14,12 +14,14 @@ import { normalizePhoneNumber } from "@/lib/phone/normalizePhoneNumber";
 type Step = "phone" | "code";
 
 function friendlyError(err: unknown): string {
+  console.error("phone auth error", err);
   const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
   if (code === "auth/invalid-phone-number") return "휴대폰 번호 형식을 확인해주세요.";
   if (code === "auth/too-many-requests") return "요청이 너무 많아요. 잠시 후 다시 시도해주세요.";
   if (code === "auth/invalid-verification-code") return "인증번호가 올바르지 않아요.";
   if (code === "auth/code-expired") return "인증번호가 만료됐어요. 다시 받아주세요.";
-  return "요청에 실패했어요. 잠시 후 다시 시도해주세요.";
+  const message = err instanceof Error ? err.message : String(err);
+  return `요청에 실패했어요: ${code || message}`;
 }
 
 export default function LoginPage() {
@@ -75,9 +77,11 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const cred = await confirmationRef.current.confirm(code);
-      const existing = await getUserProfile(cred.user.uid);
+      const phoneNumber = cred.user.phoneNumber;
+      if (!phoneNumber) throw new Error("전화번호를 확인할 수 없어요.");
+      const existing = await getUserProfile(phoneNumber);
       if (!existing) {
-        await createUserProfile(cred.user.uid, cred.user.phoneNumber);
+        await createUserProfile(phoneNumber);
       }
       router.push("/");
     } catch (err) {

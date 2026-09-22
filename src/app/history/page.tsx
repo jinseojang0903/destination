@@ -18,8 +18,8 @@ export default function HistoryPage() {
   }, [loading, user, router]);
 
   useEffect(() => {
-    if (!user) return;
-    listHistory(user.uid).then(setEntries);
+    if (!user?.phoneNumber) return;
+    listHistory(user.phoneNumber).then(setEntries);
   }, [user]);
 
   return (

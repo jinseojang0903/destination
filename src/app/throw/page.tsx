@@ -3,9 +3,10 @@
 import { Suspense, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import type { MapRef } from "react-map-gl/mapbox";
+import { Marker, type MapRef } from "react-map-gl/mapbox";
 import bbox from "@turf/bbox";
 import { useAuth } from "@/lib/firebase/AuthProvider";
+import { subscribeUserProfile } from "@/lib/firebase/attempts";
 import { MapCanvas } from "@/components/map/MapCanvas";
 import { SlingshotControl } from "@/components/slingshot/SlingshotControl";
 import { FlightCanvas, type FlightCanvasHandle } from "@/components/slingshot/FlightCanvas";
@@ -17,9 +18,11 @@ import { reverseGeocode } from "@/lib/geocode/reverseGeocode";
 import { getRepresentativePhoto } from "@/lib/photo/getPhoto";
 import { getHistoryDedupeKeys, normalizeDedupeKey, commitOfficialThrow } from "@/lib/firebase/history";
 import { shareOrDownloadNode } from "@/lib/share/buildShareImage";
+import { destinationShareText } from "@/lib/format/place";
 import { COUNTRY_TO_CONTINENT } from "@/lib/geo/continentMap";
 import countryMeta from "@/data/countryMeta.json";
 import type { RegionSelection, DestinationInfo, Continent, LatLng } from "@/types/destination";
+import type { UserProfile } from "@/types/user";
 
 type Phase = "loading" | "aiming" | "flying" | "result" | "error";
 
@@ -42,12 +45,28 @@ function continentOf(region: RegionSelection): Continent | null {
   return COUNTRY_TO_CONTINENT[region.iso3] ?? null;
 }
 
+/** Zooms the map into the landing spot so the player can see what
+ * neighborhood/area it's actually in, and resolves once the animation
+ * finishes (or after a timeout fallback so a stalled map never blocks the flow). */
+function flyToAndReveal(map: MapRef, center: LatLng): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    map.once("moveend", finish);
+    map.flyTo({ center: [center.lng, center.lat], zoom: 13.5, duration: 1200, essential: true });
+    setTimeout(finish, 1600);
+  });
+}
+
 function ThrowScreen() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const region = parseRegion(searchParams);
-  const practice = searchParams.get("practice") === "1";
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapRef | null>(null);
@@ -55,16 +74,26 @@ function ThrowScreen() {
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   const [phase, setPhase] = useState<Phase>("loading");
+  // Own state (not just read from the URL) so "다시 연습하기" / "실제 기회로 도전하기"
+  // can flip modes in place without re-navigating or re-fetching the region.
+  const [practiceMode, setPracticeMode] = useState(() => searchParams.get("practice") === "1");
   const [regionPolygon, setRegionPolygon] = useState<RegionPolygon | null>(null);
   const [bounds, setBounds] = useState<[number, number, number, number] | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [result, setResult] = useState<DestinationInfo | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
+  const [landingPoint, setLandingPoint] = useState<LatLng | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/");
   }, [authLoading, user, router]);
+
+  useEffect(() => {
+    if (!user?.phoneNumber) return;
+    return subscribeUserProfile(user.phoneNumber, setProfile);
+  }, [user]);
 
   useEffect(() => {
     if (!region) return;
@@ -91,7 +120,7 @@ function ThrowScreen() {
   const handleRelease = useCallback(
     async ({ dx, dy, power }: { dx: number; dy: number; power: number }) => {
       if (!regionPolygon || !mapRef.current || !containerRef.current || phase !== "aiming") return;
-      if (!practice && !user) return;
+      if (!practiceMode && !user?.phoneNumber) return;
 
       setPhase("flying");
       setNote(null);
@@ -114,9 +143,9 @@ function ThrowScreen() {
       let rerollCount = 0;
       let hadDuplicateReroll = false;
 
-      if (!practice && user) {
+      if (!practiceMode && user?.phoneNumber) {
         try {
-          const dedupeKeys = await getHistoryDedupeKeys(user.uid);
+          const dedupeKeys = await getHistoryDedupeKeys(user.phoneNumber);
           while (
             dedupeKeys.has(normalizeDedupeKey(geocode.countryCode, geocode.cityName)) &&
             rerollCount < 15
@@ -134,21 +163,32 @@ function ThrowScreen() {
 
       const landingPx = mapRef.current.project([landing.lng, landing.lat]);
       flightRef.current?.playFlight(anchor, landingPx, power, async () => {
+        // Drop the pin and let it sit for a beat before the camera moves, so
+        // it reads as "it landed *here*" first, then "now let's zoom in" —
+        // rather than the pin and the zoom happening at the same time.
+        setLandingPoint(landing);
+        await new Promise((resolve) => setTimeout(resolve, 600));
+
         const continent = continentOf(region!);
-        const photoUrl = await getRepresentativePhoto(geocode.cityName, geocode.countryName, continent);
+        const [photoUrl] = await Promise.all([
+          getRepresentativePhoto(geocode.cityName, geocode.countryName, continent),
+          mapRef.current ? flyToAndReveal(mapRef.current, landing) : Promise.resolve(),
+        ]);
 
         const info: DestinationInfo = {
           lat: landing.lat,
           lng: landing.lng,
           countryCode: geocode.countryCode,
           countryName: geocode.countryName,
+          countryNameKo: geocode.countryNameKo,
           cityName: geocode.cityName,
+          cityNameKo: geocode.cityNameKo,
           photoUrl,
         };
 
-        if (!practice && user) {
+        if (!practiceMode && user?.phoneNumber) {
           try {
-            await commitOfficialThrow(user.uid, {
+            await commitOfficialThrow(user.phoneNumber, {
               ...info,
               regionSelection: region!,
               throwPower: power,
@@ -176,14 +216,25 @@ function ThrowScreen() {
         setPhase("result");
       });
     },
-    [regionPolygon, phase, practice, user, region]
+    [regionPolygon, phase, practiceMode, user, region]
   );
 
+  /** Throws again against the same already-loaded region, without
+   * re-navigating — this is what lets practice mode loop freely instead of
+   * forcing a trip back to the region picker for every attempt. */
+  function throwAgain(nextPracticeMode: boolean) {
+    setPracticeMode(nextPracticeMode);
+    setResult(null);
+    setNote(null);
+    setLandingPoint(null);
+    setPhase("aiming");
+  }
+
   async function handleShare() {
-    if (!cardRef.current) return;
+    if (!cardRef.current || !result) return;
     setSharing(true);
     try {
-      await shareOrDownloadNode(cardRef.current);
+      await shareOrDownloadNode(cardRef.current, destinationShareText(result));
     } finally {
       setSharing(false);
     }
@@ -202,6 +253,8 @@ function ThrowScreen() {
     );
   }
 
+  const attemptsRemaining = profile?.attemptsRemaining ?? 0;
+
   return (
     <main className="flex flex-1 flex-col">
       <header className="flex items-center justify-between px-4 py-3">
@@ -210,14 +263,43 @@ function ThrowScreen() {
         </Link>
         <p className="text-sm text-neutral-400">
           {region?.type === "continent" ? region.continent : region?.name}
-          {practice && <span className="ml-2 text-orange-400">연습</span>}
+          {practiceMode && <span className="ml-2 text-orange-400">연습</span>}
         </p>
       </header>
 
       {phase === "result" && result ? (
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 px-4 pb-8">
-          <ResultCard ref={cardRef} info={result} practice={practice} />
+          <ResultCard ref={cardRef} info={result} practice={practiceMode} />
           {note && <p className="text-center text-xs text-neutral-400">{note}</p>}
+
+          {practiceMode ? (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => throwAgain(true)}
+                className="rounded-lg bg-orange-500 px-4 py-4 text-lg font-bold text-neutral-950"
+              >
+                다시 연습하기
+              </button>
+              <button
+                type="button"
+                onClick={() => throwAgain(false)}
+                disabled={attemptsRemaining <= 0}
+                className="rounded-lg border border-orange-500 px-4 py-3 font-medium text-orange-400 disabled:opacity-40"
+              >
+                {attemptsRemaining > 0 ? `실제 기회로 도전하기 (${attemptsRemaining}회 남음)` : "실제 기회 없음"}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => throwAgain(true)}
+              className="rounded-lg bg-orange-500 px-4 py-4 text-lg font-bold text-neutral-950"
+            >
+              연습으로 계속 던지기
+            </button>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={handleShare}
@@ -228,9 +310,9 @@ function ThrowScreen() {
             </button>
             <Link
               href="/"
-              className="flex-1 rounded-lg bg-orange-500 px-4 py-3 text-center font-semibold text-neutral-950"
+              className="flex-1 rounded-lg bg-neutral-800 px-4 py-3 text-center font-medium text-neutral-200"
             >
-              홈으로
+              지역/설정 변경
             </Link>
           </div>
         </div>
@@ -241,7 +323,15 @@ function ThrowScreen() {
               <p className="text-neutral-400">지도를 불러오는 중...</p>
             </div>
           )}
-          {bounds && <MapCanvas ref={mapRef} fitBounds={bounds} />}
+          {bounds && (
+            <MapCanvas ref={mapRef} fitBounds={bounds}>
+              {landingPoint && (
+                <Marker longitude={landingPoint.lng} latitude={landingPoint.lat} anchor="center">
+                  <span className="text-3xl drop-shadow-lg">📍</span>
+                </Marker>
+              )}
+            </MapCanvas>
+          )}
           <FlightCanvas ref={flightRef} />
           {phase !== "loading" && (
             <SlingshotControl disabled={phase !== "aiming"} onRelease={handleRelease} />

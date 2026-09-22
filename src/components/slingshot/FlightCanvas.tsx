@@ -82,6 +82,9 @@ export const FlightCanvas = forwardRef<FlightCanvasHandle, { className?: string 
         if (t < 1) {
           rafRef.current = requestAnimationFrame(frame);
         } else {
+          // Clear the drawn dart/trail so it doesn't linger as a "ghost" pin
+          // once the real map Marker takes over at the same spot.
+          ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
           onDone();
         }
       }

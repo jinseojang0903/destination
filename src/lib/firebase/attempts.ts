@@ -4,15 +4,19 @@ import type { UserProfile } from "@/types/user";
 
 const DEFAULT_ATTEMPTS = 1;
 
-function userDocRef(uid: string) {
-  return doc(db, "users", uid);
+/** The user's account is keyed by their verified phone number (E.164, e.g.
+ * "+821012345678") rather than the opaque Firebase Auth uid, so the account
+ * a phone number belongs to is directly visible in the Firestore console —
+ * important since granting extra attempts is a manual console edit. */
+function userDocRef(phoneNumber: string) {
+  return doc(db, "users", phoneNumber);
 }
 
 /** Creates the user's profile doc the first time they confirm their phone
  * number. Callers should check `getUserProfile` first and only call this for
  * first-time sign-ins, since it unconditionally resets attempts. */
-export async function createUserProfile(uid: string, phoneNumber: string | null): Promise<void> {
-  await setDoc(userDocRef(uid), {
+export async function createUserProfile(phoneNumber: string): Promise<void> {
+  await setDoc(userDocRef(phoneNumber), {
     phoneNumber,
     createdAt: serverTimestamp(),
     attemptsRemaining: DEFAULT_ATTEMPTS,
@@ -20,8 +24,8 @@ export async function createUserProfile(uid: string, phoneNumber: string | null)
   });
 }
 
-export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const snap = await getDoc(userDocRef(uid));
+export async function getUserProfile(phoneNumber: string): Promise<UserProfile | null> {
+  const snap = await getDoc(userDocRef(phoneNumber));
   if (!snap.exists()) return null;
   const data = snap.data();
   return {
@@ -35,8 +39,8 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 /** Live-subscribes to the user's profile (attempts remaining changes when an
  * official throw is committed, or when the developer manually grants more
  * via the Firebase console). */
-export function subscribeUserProfile(uid: string, onChange: (profile: UserProfile | null) => void): Unsubscribe {
-  return onSnapshot(userDocRef(uid), (snap) => {
+export function subscribeUserProfile(phoneNumber: string, onChange: (profile: UserProfile | null) => void): Unsubscribe {
+  return onSnapshot(userDocRef(phoneNumber), (snap) => {
     if (!snap.exists()) {
       onChange(null);
       return;

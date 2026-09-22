@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/firebase/AuthProvider";
 import { getHistoryEntry } from "@/lib/firebase/history";
 import { ResultCard } from "@/components/result/ResultCard";
 import { shareOrDownloadNode } from "@/lib/share/buildShareImage";
+import { destinationShareText } from "@/lib/format/place";
 import type { HistoryEntry } from "@/types/destination";
 
 export default function ResultDetailPage() {
@@ -22,15 +23,15 @@ export default function ResultDetailPage() {
   }, [loading, user, router]);
 
   useEffect(() => {
-    if (!user) return;
-    getHistoryEntry(user.uid, historyId).then(setEntry);
+    if (!user?.phoneNumber) return;
+    getHistoryEntry(user.phoneNumber, historyId).then(setEntry);
   }, [user, historyId]);
 
   async function handleShare() {
-    if (!cardRef.current) return;
+    if (!cardRef.current || !entry) return;
     setSharing(true);
     try {
-      await shareOrDownloadNode(cardRef.current);
+      await shareOrDownloadNode(cardRef.current, destinationShareText(entry));
     } finally {
       setSharing(false);
     }

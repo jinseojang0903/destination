@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { HistoryEntry } from "@/types/destination";
+import { bilingualName } from "@/lib/format/place";
 
 export function HistoryList({ entries }: { entries: HistoryEntry[] }) {
   if (entries.length === 0) {
@@ -22,9 +23,9 @@ export function HistoryList({ entries }: { entries: HistoryEntry[] }) {
             />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">
-                {entry.cityName ?? entry.countryName ?? "알 수 없는 지역"}
+                {bilingualName(entry.cityNameKo, entry.cityName) ?? bilingualName(entry.countryNameKo, entry.countryName) ?? "알 수 없는 지역"}
               </p>
-              <p className="truncate text-sm text-neutral-400">{entry.countryName}</p>
+              <p className="truncate text-sm text-neutral-400">{bilingualName(entry.countryNameKo, entry.countryName)}</p>
             </div>
             <p className="shrink-0 text-xs text-neutral-500">
               {new Date(entry.createdAt).toLocaleDateString("ko-KR")}

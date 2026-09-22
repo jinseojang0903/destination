@@ -1,5 +1,6 @@
 import { forwardRef } from "react";
 import type { DestinationInfo } from "@/types/destination";
+import { bilingualName } from "@/lib/format/place";
 
 interface Props {
   info: DestinationInfo;
@@ -7,8 +8,10 @@ interface Props {
 }
 
 export const ResultCard = forwardRef<HTMLDivElement, Props>(function ResultCard({ info, practice }, ref) {
-  const title = info.cityName ? `${info.cityName}` : info.countryName ?? "알 수 없는 지역";
-  const subtitle = info.cityName ? info.countryName : null;
+  const cityLabel = bilingualName(info.cityNameKo, info.cityName);
+  const countryLabel = bilingualName(info.countryNameKo, info.countryName);
+  const title = cityLabel ?? countryLabel ?? "알 수 없는 지역";
+  const subtitle = cityLabel ? countryLabel : null;
 
   return (
     <div

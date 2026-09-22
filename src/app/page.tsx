@@ -11,6 +11,7 @@ import type { UserProfile } from "@/types/user";
 import type { RegionSelection } from "@/types/destination";
 import { RegionPicker } from "@/components/region/RegionPicker";
 import { PracticeToggle } from "@/components/common/PracticeToggle";
+import { RequestAttemptsForm } from "@/components/common/RequestAttemptsForm";
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -20,8 +21,8 @@ export default function Home() {
   const [practice, setPractice] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
-    return subscribeUserProfile(user.uid, setProfile);
+    if (!user?.phoneNumber) return;
+    return subscribeUserProfile(user.phoneNumber, setProfile);
   }, [user]);
 
   function handleStart() {
@@ -85,6 +86,8 @@ export default function Home() {
           </p>
         )}
       </div>
+
+      {user.phoneNumber && <RequestAttemptsForm phoneNumber={user.phoneNumber} />}
 
       <RegionPicker value={region} onChange={setRegion} />
 

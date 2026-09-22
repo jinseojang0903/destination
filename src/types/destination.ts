@@ -20,7 +20,9 @@ export interface DestinationInfo {
   lng: number;
   countryCode: string | null;
   countryName: string | null;
+  countryNameKo: string | null;
   cityName: string | null;
+  cityNameKo: string | null;
   photoUrl: string | null;
 }
 

@@ -3,33 +3,72 @@ rules_version = '2';
 // Deploy with: firebase deploy --only firestore:rules
 //
 // Note: edits made through the Firebase Console's Firestore data viewer run
-// with project-owner privileges and are NOT subject to these rules. That is
-// the intended (and only) way to grant a user extra attempts in this app —
-// see README.md "Granting extra attempts" — so it's safe (and required) to
-// lock the client-facing write path down tightly here.
+// with project-owner privileges and are NOT subject to these rules.
+//
+// The user's document is keyed by their verified phone number (not the
+// Firebase Auth uid), so ownership is checked against the `phone_number`
+// claim Firebase Auth puts on the ID token for phone-authenticated users.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
 
-      // Only the sign-up flow creates this doc, once, for the caller's own uid.
-      allow create: if request.auth != null && request.auth.uid == uid;
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.phone_number));
+    }
 
-      // Clients may only ever decrease attemptsRemaining (spending a throw),
-      // never increase it, and may never touch attemptsGrantedTotal.
-      allow update: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.data.attemptsRemaining <= resource.data.attemptsRemaining
-        && request.resource.data.attemptsGrantedTotal == resource.data.attemptsGrantedTotal;
+    // Admin markers — added manually via the Firebase console only
+    // (README.md "관리자 지정하기"). Each user may only check their own.
+    match /admins/{phoneNumber} {
+      allow get: if request.auth != null && request.auth.token.phone_number == phoneNumber;
+      allow list, write: if false;
+    }
+
+    match /users/{phoneNumber} {
+      allow read: if request.auth != null && request.auth.token.phone_number == phoneNumber;
+
+      // Only the sign-in flow creates this doc, once, for the caller's own phone number.
+      allow create: if request.auth != null && request.auth.token.phone_number == phoneNumber;
+
+      // The account owner may only ever decrease attemptsRemaining (spending
+      // a throw), never increase it, and may never touch attemptsGrantedTotal
+      // directly. An admin approving a request (see attemptRequests below)
+      // is the only path that can increase attempts.
+      allow update: if request.auth != null && (
+        isAdmin() ||
+        (request.auth.token.phone_number == phoneNumber
+          && request.resource.data.attemptsRemaining <= resource.data.attemptsRemaining
+          && request.resource.data.attemptsGrantedTotal == resource.data.attemptsGrantedTotal)
+      );
 
       allow delete: if false;
 
       match /history/{historyId} {
-        allow read: if request.auth != null && request.auth.uid == uid;
-        allow create: if request.auth != null && request.auth.uid == uid;
+        allow read: if request.auth != null && request.auth.token.phone_number == phoneNumber;
+        allow create: if request.auth != null && request.auth.token.phone_number == phoneNumber;
         // History is an immutable log: no edits or deletes from the client.
         allow update, delete: if false;
       }
+    }
+
+    // "관리자에게 기회 달라고 조르기" requests. Anyone can file one for
+    // themselves; only an admin can approve/reject (which is what's allowed
+    // to grant more attempts on the matching users/{phoneNumber} doc above).
+    match /attemptRequests/{requestId} {
+      allow create: if request.auth != null
+        && request.resource.data.phoneNumber == request.auth.token.phone_number
+        && request.resource.data.status == "pending"
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 100
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 1000;
+
+      allow read: if request.auth != null
+        && (resource.data.phoneNumber == request.auth.token.phone_number || isAdmin());
+
+      allow update: if isAdmin();
+      allow delete: if false;
     }
   }
 }
