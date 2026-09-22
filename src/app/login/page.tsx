@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   RecaptchaVerifier,
@@ -9,6 +9,7 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { getUserProfile, createUserProfile } from "@/lib/firebase/attempts";
+import { isPhoneAuthEnabled } from "@/lib/firebase/systemStatus";
 import { normalizePhoneNumber } from "@/lib/phone/normalizePhoneNumber";
 
 type Step = "phone" | "code";
@@ -35,6 +36,13 @@ export default function LoginPage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Manual on/off switch, checked before rendering the form at all — see
+  // src/lib/firebase/systemStatus.ts for how to flip it on.
+  const [locked, setLocked] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    isPhoneAuthEnabled().then((enabled) => setLocked(!enabled));
+  }, []);
 
   function getVerifier(): RecaptchaVerifier {
     if (!verifierRef.current && recaptchaContainerRef.current) {
@@ -48,6 +56,7 @@ export default function LoginPage() {
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (locked) return;
 
     const normalized = normalizePhoneNumber(phoneInput);
     if (!normalized) {
@@ -89,6 +98,25 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (locked === null) {
+    return (
+      <main className="flex flex-1 items-center justify-center">
+        <p className="text-neutral-400">불러오는 중...</p>
+      </main>
+    );
+  }
+
+  if (locked) {
+    return (
+      <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+        <h1 className="text-2xl font-bold">🎯 다트 여행</h1>
+        <p className="max-w-xs text-neutral-400">
+          현재 신규 로그인이 잠시 중단되어 있어요. 준비되면 다시 열릴 예정이에요.
+        </p>
+      </main>
+    );
   }
 
   return (

@@ -37,6 +37,19 @@
 
 일반 사용자 계정은 `attemptsRemaining`을 절대 스스로 늘릴 수 없도록 `firestore.rules`에서 막아뒀고, 관리자 계정(`admins` 컬렉션에 등록된 전화번호)만 늘릴 수 있습니다.
 
+## 로그인(SMS 인증) 켜고 끄기
+
+Blaze 요금제에서 SMS는 실제 전화번호마다 비용이 나가기 때문에, 준비되기 전까지는 로그인 자체를 완전히 막아둘 수 있게 만들어뒀습니다. **기본값은 "잠김"** 입니다 — `systemStatus/config` 문서가 없으면 `/login` 페이지가 인증번호 요청 폼 자체를 보여주지 않습니다.
+
+**열기(로그인 허용):**
+1. Firebase 콘솔 → Firestore Database → **"+ 컬렉션 시작"**
+2. 컬렉션 ID: `systemStatus`, 문서 ID: `config`
+3. 필드 추가: 이름 `phoneAuthEnabled`, 유형 `boolean`, 값 `true`
+
+**다시 잠그기**: 그 필드 값을 `false`로 바꾸면 됩니다 (문서를 지워도 동일한 효과).
+
+배포 없이 즉시 반영되고, 앱에서는 절대 이 값을 쓸 수 없도록 `firestore.rules`로 막아뒀습니다.
+
 ## 지리 데이터 재생성
 
 `public/geo/`의 국가/대륙 경계 GeoJSON과 `src/data`, `src/lib/geo/continentMap.ts`는

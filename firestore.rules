@@ -70,5 +70,14 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if false;
     }
+
+    // Manual kill switch for phone-auth sign-in (systemStatus/config,
+    // field phoneAuthEnabled). Must be publicly readable since it's checked
+    // on the login page before anyone is signed in; only ever writable by
+    // the developer directly in the console.
+    match /systemStatus/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
   }
 }
