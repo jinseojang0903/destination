@@ -30,6 +30,9 @@ export function SlingshotControl({ disabled, onRelease }: Props) {
         const power = Math.min(dist / MAX_PULL_PX, 1);
         setPull({ dx: 0, dy: 0 });
         if (dist > 8) {
+          // Android Chrome supports this; iOS Safari doesn't expose the
+          // Vibration API at all, so this just silently no-ops there.
+          navigator.vibrate?.(15 + power * 40);
           onRelease({ dx: mx, dy: my, power });
         }
       }
@@ -81,7 +84,10 @@ export function SlingshotControl({ disabled, onRelease }: Props) {
       </div>
 
       {/* Vertical power gauge, right edge — fills bottom-up and glows hotter as it charges. */}
-      <div className="pointer-events-none absolute right-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2">
+      <div
+        className="pointer-events-none absolute top-1/2 flex -translate-y-1/2 flex-col items-center gap-2"
+        style={{ right: "max(1rem, env(safe-area-inset-right))" }}
+      >
         <span className="text-xs font-semibold text-neutral-300">{Math.round(power * 100)}%</span>
         <div className="relative h-56 w-5 overflow-hidden rounded-full border border-neutral-700 bg-neutral-900/80">
           <div
@@ -96,7 +102,10 @@ export function SlingshotControl({ disabled, onRelease }: Props) {
         <span className="text-2xl">⚡</span>
       </div>
 
-      <p className="pointer-events-none absolute inset-x-6 bottom-6 text-center text-xs text-neutral-400">
+      <p
+        className="pointer-events-none absolute inset-x-6 text-center text-xs text-neutral-400"
+        style={{ bottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
+      >
         {disabled ? "날아가는 중..." : "당겨서 조준하고 놓으면 던져져요"}
       </p>
     </div>

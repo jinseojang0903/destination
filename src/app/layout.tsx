@@ -22,6 +22,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // Lets safe-area-inset-* env() values resolve to real numbers on notched
+  // phones (iPhone home indicator, Android gesture bar) instead of 0.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

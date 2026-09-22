@@ -271,7 +271,10 @@ function ThrowScreen() {
       </header>
 
       {phase === "result" && result ? (
-        <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-4 px-4 pb-8">
+        <div
+          className="animate-screen-enter mx-auto flex w-full max-w-md flex-1 flex-col gap-4 px-4"
+          style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}
+        >
           <ResultCard ref={cardRef} info={result} practice={practiceMode} />
           {note && <p className="text-center text-xs text-neutral-400">{note}</p>}
 
@@ -320,7 +323,7 @@ function ThrowScreen() {
           </div>
         </div>
       ) : (
-        <div ref={containerRef} className="relative flex-1">
+        <div ref={containerRef} className="animate-screen-enter relative flex-1">
           {phase === "loading" && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-neutral-950/80">
               <p className="text-neutral-400">지도를 불러오는 중...</p>

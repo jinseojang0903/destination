@@ -11,7 +11,7 @@ import {
 import { auth } from "@/lib/firebase/client";
 import { getUserProfile, createUserProfile } from "@/lib/firebase/attempts";
 import { isPhoneAuthEnabled } from "@/lib/firebase/systemStatus";
-import { normalizePhoneNumber } from "@/lib/phone/normalizePhoneNumber";
+import { normalizePhoneNumber, formatPhoneInputKR } from "@/lib/phone/normalizePhoneNumber";
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
@@ -99,14 +99,12 @@ export default function LoginPage() {
     }
   }
 
-  async function handleConfirmCode(e: React.FormEvent) {
-    e.preventDefault();
+  async function confirmCode(codeValue: string) {
+    if (!confirmationRef.current || submitting) return;
     setError(null);
-    if (!confirmationRef.current) return;
-
     setSubmitting(true);
     try {
-      const cred = await confirmationRef.current.confirm(code);
+      const cred = await confirmationRef.current.confirm(codeValue);
       const phoneNumber = cred.user.phoneNumber;
       if (!phoneNumber) throw new Error("전화번호를 확인할 수 없어요.");
       const existing = await getUserProfile(phoneNumber);
@@ -119,6 +117,11 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleConfirmCode(e: React.FormEvent) {
+    e.preventDefault();
+    confirmCode(code);
   }
 
   if (locked === null) {
@@ -155,7 +158,7 @@ export default function LoginPage() {
             autoComplete="tel"
             placeholder="010-1234-5678"
             value={phoneInput}
-            onChange={(e) => setPhoneInput(e.target.value)}
+            onChange={(e) => setPhoneInput(formatPhoneInputKR(e.target.value))}
             className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-base outline-none focus:border-neutral-400"
           />
           {error && <p className="text-sm text-red-400">{error}</p>}
@@ -183,7 +186,11 @@ export default function LoginPage() {
             autoComplete="one-time-code"
             placeholder="6자리 인증번호"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+              setCode(digits);
+              if (digits.length === 6) confirmCode(digits);
+            }}
             className="rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-3 text-center text-lg tracking-widest outline-none focus:border-neutral-400"
           />
           {error && <p className="text-sm text-red-400">{error}</p>}
