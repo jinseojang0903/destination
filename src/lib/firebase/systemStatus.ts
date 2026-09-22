@@ -12,7 +12,14 @@ import { db } from "./client";
  * the doc) to lock it again — no redeploy needed either way.
  */
 export async function isPhoneAuthEnabled(): Promise<boolean> {
-  const snap = await getDoc(doc(db, "systemStatus", "config"));
-  if (!snap.exists()) return false;
-  return snap.data().phoneAuthEnabled === true;
+  try {
+    const snap = await getDoc(doc(db, "systemStatus", "config"));
+    if (!snap.exists()) return false;
+    return snap.data().phoneAuthEnabled === true;
+  } catch (err) {
+    // Fail closed: a denied/failed read (e.g. rules not published yet)
+    // should lock the form, not hang it or silently let it through.
+    console.warn("isPhoneAuthEnabled check failed, defaulting to locked", err);
+    return false;
+  }
 }
