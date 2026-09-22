@@ -24,7 +24,9 @@ service cloud.firestore {
     }
 
     match /users/{phoneNumber} {
-      allow read: if request.auth != null && request.auth.token.phone_number == phoneNumber;
+      // Admins can also read other users' docs — needed because approving a
+      // request reads the target account's current attemptsRemaining first.
+      allow read: if request.auth != null && (request.auth.token.phone_number == phoneNumber || isAdmin());
 
       // Only the sign-in flow creates this doc, once, for the caller's own phone number.
       allow create: if request.auth != null && request.auth.token.phone_number == phoneNumber;
