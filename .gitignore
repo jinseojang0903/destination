@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# one-off raw downloads used by scripts/build-geo-data.cjs (regenerate, don't commit)
+/scripts_countries_raw.geojson
+/scripts_regions_raw.json

@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// Deploy with: firebase deploy --only firestore:rules
+//
+// Note: edits made through the Firebase Console's Firestore data viewer run
+// with project-owner privileges and are NOT subject to these rules. That is
+// the intended (and only) way to grant a user extra attempts in this app —
+// see README.md "Granting extra attempts" — so it's safe (and required) to
+// lock the client-facing write path down tightly here.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      // Only the sign-up flow creates this doc, once, for the caller's own uid.
+      allow create: if request.auth != null && request.auth.uid == uid;
+
+      // Clients may only ever decrease attemptsRemaining (spending a throw),
+      // never increase it, and may never touch attemptsGrantedTotal.
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.attemptsRemaining <= resource.data.attemptsRemaining
+        && request.resource.data.attemptsGrantedTotal == resource.data.attemptsGrantedTotal;
+
+      allow delete: if false;
+
+      match /history/{historyId} {
+        allow read: if request.auth != null && request.auth.uid == uid;
+        allow create: if request.auth != null && request.auth.uid == uid;
+        // History is an immutable log: no edits or deletes from the client.
+        allow update, delete: if false;
+      }
+    }
+  }
+}
