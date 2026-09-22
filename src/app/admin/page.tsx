@@ -19,6 +19,7 @@ export default function AdminPage() {
   const [requests, setRequests] = useState<AttemptRequest[] | null>(null);
   const [amounts, setAmounts] = useState<Record<string, number>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -39,9 +40,14 @@ export default function AdminPage() {
 
   async function handleApprove(req: AttemptRequest) {
     setBusyId(req.id);
+    setActionError(null);
     try {
       await approveAttemptRequest(req.id, req.phoneNumber, amounts[req.id] ?? 1);
       refresh();
+    } catch (err) {
+      console.error("approveAttemptRequest failed", err);
+      const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
+      setActionError(`승인에 실패했어요${code ? ` (${code})` : ""}. 콘솔을 확인해주세요.`);
     } finally {
       setBusyId(null);
     }
@@ -49,9 +55,14 @@ export default function AdminPage() {
 
   async function handleReject(req: AttemptRequest) {
     setBusyId(req.id);
+    setActionError(null);
     try {
       await rejectAttemptRequest(req.id);
       refresh();
+    } catch (err) {
+      console.error("rejectAttemptRequest failed", err);
+      const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
+      setActionError(`거절에 실패했어요${code ? ` (${code})` : ""}. 콘솔을 확인해주세요.`);
     } finally {
       setBusyId(null);
     }
@@ -87,6 +98,8 @@ export default function AdminPage() {
           홈으로
         </Link>
       </header>
+
+      {actionError && <p className="rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300">{actionError}</p>}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-neutral-400">대기 중 ({pending.length})</h2>
