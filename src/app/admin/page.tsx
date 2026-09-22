@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 import { useAuth } from "@/lib/firebase/AuthProvider";
 import {
   checkIsAdmin,
@@ -46,6 +47,7 @@ export default function AdminPage() {
       refresh();
     } catch (err) {
       console.error("approveAttemptRequest failed", err);
+      Sentry.captureException(err);
       const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
       setActionError(`승인에 실패했어요${code ? ` (${code})` : ""}. 콘솔을 확인해주세요.`);
     } finally {
@@ -61,6 +63,7 @@ export default function AdminPage() {
       refresh();
     } catch (err) {
       console.error("rejectAttemptRequest failed", err);
+      Sentry.captureException(err);
       const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
       setActionError(`거절에 실패했어요${code ? ` (${code})` : ""}. 콘솔을 확인해주세요.`);
     } finally {

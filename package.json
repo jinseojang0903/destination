@@ -11,6 +11,7 @@
     "gen:geo": "node scripts/build-geo-data.cjs"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.75.1",
     "@turf/turf": "^7.4.0",
     "@use-gesture/react": "^10.3.1",
     "firebase": "^12.19.0",

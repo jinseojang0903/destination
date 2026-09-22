@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
@@ -12,10 +13,13 @@ import { getUserProfile, createUserProfile } from "@/lib/firebase/attempts";
 import { isPhoneAuthEnabled } from "@/lib/firebase/systemStatus";
 import { normalizePhoneNumber } from "@/lib/phone/normalizePhoneNumber";
 
+const RESEND_COOLDOWN_SECONDS = 60;
+
 type Step = "phone" | "code";
 
 function friendlyError(err: unknown): string {
   console.error("phone auth error", err);
+  Sentry.captureException(err);
   const code = err instanceof Error && "code" in err ? String((err as { code: unknown }).code) : "";
   if (code === "auth/invalid-phone-number") return "휴대폰 번호 형식을 확인해주세요.";
   if (code === "auth/too-many-requests") return "요청이 너무 많아요. 잠시 후 다시 시도해주세요.";
@@ -39,10 +43,26 @@ export default function LoginPage() {
   // Manual on/off switch, checked before rendering the form at all — see
   // src/lib/firebase/systemStatus.ts for how to flip it on.
   const [locked, setLocked] = useState<boolean | null>(null);
+  // Each "인증번호 받기" click sends a real, billable SMS — this cooldown
+  // stops accidental double-clicks / reconnect-and-retry from sending
+  // several for the same login attempt. Persists across the phone<->code
+  // step toggle, not just while the "phone" form is showing. Tracked as a
+  // target timestamp (not a counting-down number) so it stays correct even
+  // if the tab is backgrounded and timers get throttled.
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
   useEffect(() => {
     isPhoneAuthEnabled().then((enabled) => setLocked(!enabled));
   }, []);
+
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const tick = () => setCooldownRemaining(Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000)));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
 
   function getVerifier(): RecaptchaVerifier {
     if (!verifierRef.current && recaptchaContainerRef.current) {
@@ -56,7 +76,7 @@ export default function LoginPage() {
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (locked) return;
+    if (locked || cooldownRemaining > 0) return;
 
     const normalized = normalizePhoneNumber(phoneInput);
     if (!normalized) {
@@ -69,6 +89,7 @@ export default function LoginPage() {
       const verifier = getVerifier();
       confirmationRef.current = await signInWithPhoneNumber(auth, normalized, verifier);
       setStep("code");
+      setCooldownUntil(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
     } catch (err) {
       setError(friendlyError(err));
       verifierRef.current?.clear();
@@ -140,10 +161,14 @@ export default function LoginPage() {
           {error && <p className="text-sm text-red-400">{error}</p>}
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || cooldownRemaining > 0}
             className="rounded-lg bg-orange-500 px-4 py-3 font-semibold text-neutral-950 disabled:opacity-50"
           >
-            {submitting ? "전송 중..." : "인증번호 받기"}
+            {submitting
+              ? "전송 중..."
+              : cooldownRemaining > 0
+                ? `${cooldownRemaining}초 후 재전송 가능`
+                : "인증번호 받기"}
           </button>
         </form>
       )}

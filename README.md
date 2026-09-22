@@ -50,6 +50,18 @@ Blaze 요금제에서 SMS는 실제 전화번호마다 비용이 나가기 때�
 
 배포 없이 즉시 반영되고, 앱에서는 절대 이 값을 쓸 수 없도록 `firestore.rules`로 막아뒀습니다.
 
+## 에러 모니터링 (Sentry)
+
+로그인/던지기/관리자 승인 등 주요 지점에서 실패가 나면 Sentry로 자동 전송되도록 연결해뒀습니다. 값이 없으면 그냥 아무 데도 안 보내질 뿐, 앱은 정상 동작합니다.
+
+1. https://sentry.io 무료 가입 → 프로젝트 생성 시 플랫폼으로 **Next.js** 선택
+2. 발급된 **DSN** 값을 `.env.local`의 `NEXT_PUBLIC_SENTRY_DSN`에, Vercel 환경변수에도 동일하게 추가
+3. 이후 실제 에러 발생 시 Sentry 대시보드에서 확인 가능
+
+## 인증번호 재전송 쿨다운
+
+"인증번호 받기"를 누르면 60초 동안 재전송 버튼이 비활성화됩니다. 실수로 여러 번 눌러서 같은 번호로 SMS가 중복 발송(=중복 과금)되는 걸 막기 위함이며, `/login` 페이지 코드(`RESEND_COOLDOWN_SECONDS`)에서 시간을 조정할 수 있습니다.
+
 ## 지리 데이터 재생성
 
 `public/geo/`의 국가/대륙 경계 GeoJSON과 `src/data`, `src/lib/geo/continentMap.ts`는

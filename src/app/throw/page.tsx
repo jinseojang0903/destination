@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import * as Sentry from "@sentry/nextjs";
 import { Marker, type MapRef } from "react-map-gl/mapbox";
 import bbox from "@turf/bbox";
 import { useAuth } from "@/lib/firebase/AuthProvider";
@@ -105,7 +106,8 @@ function ThrowScreen() {
         setBounds(bbox(poly) as [number, number, number, number]);
         setPhase("aiming");
       })
-      .catch(() => {
+      .catch((err) => {
+        Sentry.captureException(err);
         if (!cancelled) {
           setErrorMsg("지도 데이터를 불러오지 못했어요.");
           setPhase("error");
@@ -200,6 +202,7 @@ function ThrowScreen() {
               setPhase("error");
               return;
             }
+            Sentry.captureException(err);
             setErrorMsg("결과를 저장하지 못했어요. 네트워크를 확인해주세요.");
             setPhase("error");
             return;
