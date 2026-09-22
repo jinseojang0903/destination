@@ -16,6 +16,37 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/admins/$(request.auth.token.phone_number));
     }
 
+    function isSelf(phoneNumber) {
+      return request.auth != null && request.auth.token.phone_number == phoneNumber;
+    }
+
+    // Spending an official throw: attemptsRemaining may only go down,
+    // attemptsGrantedTotal never touched by the client this way.
+    function isSpendingAttempt() {
+      return request.resource.data.attemptsRemaining <= resource.data.attemptsRemaining
+        && request.resource.data.attemptsGrantedTotal == resource.data.attemptsGrantedTotal;
+    }
+
+    // Daily check-in: today's date must actually be new, exactly one date
+    // added to the log, and the attempts bump bounded to at most +2 (daily
+    // base + 7-day streak bonus) with attemptsGrantedTotal moving in
+    // lockstep. Uses get(field, default) so accounts created before this
+    // feature (missing checkIns/checkInStreak/lastCheckInDate) don't error
+    // out on their first check-in. This can't verify the date is truly
+    // "today" or the streak math from inside rules (no date functions in
+    // this language), so it's resistant to casual abuse but not to someone
+    // deliberately crafting raw API calls — acceptable for a small app
+    // among friends.
+    function isValidCheckIn() {
+      let delta = request.resource.data.attemptsRemaining - resource.data.get('attemptsRemaining', 0);
+      return request.resource.data.lastCheckInDate != resource.data.get('lastCheckInDate', null)
+        && request.resource.data.checkIns.size() == resource.data.get('checkIns', []).size() + 1
+        && request.resource.data.checkInStreak is int
+        && request.resource.data.checkInStreak > 0
+        && delta >= 0 && delta <= 2
+        && request.resource.data.attemptsGrantedTotal == resource.data.get('attemptsGrantedTotal', 0) + delta;
+    }
+
     // Admin markers — added manually via the Firebase console only
     // (README.md "관리자 지정하기"). Each user may only check their own.
     match /admins/{phoneNumber} {
@@ -31,16 +62,11 @@ service cloud.firestore {
       // Only the sign-in flow creates this doc, once, for the caller's own phone number.
       allow create: if request.auth != null && request.auth.token.phone_number == phoneNumber;
 
-      // The account owner may only ever decrease attemptsRemaining (spending
-      // a throw), never increase it, and may never touch attemptsGrantedTotal
-      // directly. An admin approving a request (see attemptRequests below)
-      // is the only path that can increase attempts.
-      allow update: if request.auth != null && (
-        isAdmin() ||
-        (request.auth.token.phone_number == phoneNumber
-          && request.resource.data.attemptsRemaining <= resource.data.attemptsRemaining
-          && request.resource.data.attemptsGrantedTotal == resource.data.attemptsGrantedTotal)
-      );
+      // The account owner may spend an attempt (decrease only) or check in
+      // (bounded increase, see isValidCheckIn). Anything else that
+      // increases attempts — like approving a request — requires isAdmin().
+      allow update: if isAdmin()
+        || (isSelf(phoneNumber) && (isSpendingAttempt() || isValidCheckIn()));
 
       allow delete: if false;
 

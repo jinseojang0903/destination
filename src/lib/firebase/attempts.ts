@@ -1,4 +1,12 @@
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, type Unsubscribe } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+  onSnapshot,
+  type Unsubscribe,
+  type DocumentSnapshot,
+} from "firebase/firestore";
 import { db } from "./client";
 import type { UserProfile } from "@/types/user";
 
@@ -12,6 +20,19 @@ function userDocRef(phoneNumber: string) {
   return doc(db, "users", phoneNumber);
 }
 
+function mapUserDoc(snap: DocumentSnapshot): UserProfile {
+  const data = snap.data()!;
+  return {
+    phoneNumber: data.phoneNumber ?? null,
+    createdAt: data.createdAt?.toMillis?.() ?? null,
+    attemptsRemaining: data.attemptsRemaining ?? 0,
+    attemptsGrantedTotal: data.attemptsGrantedTotal ?? 0,
+    checkIns: data.checkIns ?? [],
+    checkInStreak: data.checkInStreak ?? 0,
+    lastCheckInDate: data.lastCheckInDate ?? null,
+  };
+}
+
 /** Creates the user's profile doc the first time they confirm their phone
  * number. Callers should check `getUserProfile` first and only call this for
  * first-time sign-ins, since it unconditionally resets attempts. */
@@ -21,19 +42,16 @@ export async function createUserProfile(phoneNumber: string): Promise<void> {
     createdAt: serverTimestamp(),
     attemptsRemaining: DEFAULT_ATTEMPTS,
     attemptsGrantedTotal: DEFAULT_ATTEMPTS,
+    checkIns: [],
+    checkInStreak: 0,
+    lastCheckInDate: null,
   });
 }
 
 export async function getUserProfile(phoneNumber: string): Promise<UserProfile | null> {
   const snap = await getDoc(userDocRef(phoneNumber));
   if (!snap.exists()) return null;
-  const data = snap.data();
-  return {
-    phoneNumber: data.phoneNumber ?? null,
-    createdAt: data.createdAt?.toMillis?.() ?? null,
-    attemptsRemaining: data.attemptsRemaining ?? 0,
-    attemptsGrantedTotal: data.attemptsGrantedTotal ?? 0,
-  };
+  return mapUserDoc(snap);
 }
 
 /** Live-subscribes to the user's profile (attempts remaining changes when an
@@ -45,13 +63,7 @@ export function subscribeUserProfile(phoneNumber: string, onChange: (profile: Us
       onChange(null);
       return;
     }
-    const data = snap.data();
-    onChange({
-      phoneNumber: data.phoneNumber ?? null,
-      createdAt: data.createdAt?.toMillis?.() ?? null,
-      attemptsRemaining: data.attemptsRemaining ?? 0,
-      attemptsGrantedTotal: data.attemptsGrantedTotal ?? 0,
-    });
+    onChange(mapUserDoc(snap));
   });
 }
 

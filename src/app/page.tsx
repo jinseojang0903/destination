@@ -12,6 +12,7 @@ import type { RegionSelection } from "@/types/destination";
 import { RegionPicker } from "@/components/region/RegionPicker";
 import { PracticeToggle } from "@/components/common/PracticeToggle";
 import { RequestAttemptsForm } from "@/components/common/RequestAttemptsForm";
+import { CheckInCard } from "@/components/checkin/CheckInCard";
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -86,6 +87,8 @@ export default function Home() {
           </p>
         )}
       </div>
+
+      {user.phoneNumber && profile && <CheckInCard phoneNumber={user.phoneNumber} profile={profile} />}
 
       {user.phoneNumber && <RequestAttemptsForm phoneNumber={user.phoneNumber} />}
 
